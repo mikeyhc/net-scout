@@ -32,28 +32,69 @@ load_ifaddrs(void){
 void
 map_local_network(void){
 	struct ifaddrs *ifa;
-	int family, s;
-	char host[NI_MAXHOST];
+	int family, s, i, j;
+	char host[NI_MAXHOST], mask[NI_MAXHOST], network[NI_MAXHOST], 
+			 broadcast[NI_MAXHOST];
+	struct sockaddr net, broad;
 	
 	load_ifaddrs();
 	for(ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next){
 		if(ifa->ifa_addr==NULL) continue;
 		family = ifa->ifa_addr->sa_family;
-		printf("%s address family: %d%s\n", 
+		if(family != AF_INET && family != AF_INET6) continue;
+
+		printf("\nusing:\n%s address family: %d%s\n", 
 				ifa->ifa_name, family,
-				(family == AF_PACKET) ? " (AF_PACKET)" :
 				(family == AF_INET)		? " (AF_INET)" :
 				(family == AF_INET6)	? " (AF_INET6)" : " (UNKNOWN)");
-		if(family == AF_INET || family == AF_INET6){
-			s = getnameinfo(ifa->ifa_addr,
-						(family == AF_INET) ? sizeof(struct sockaddr_in) :
-																	sizeof(struct sockaddr_in6),
-						host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
-			if(s!=0){
-				print("getnameinfo() failed: %s\n", gai_strerror(s));
-				exit(EXIT_FAILURE);
-			}
-			printf("\taddress: <%s>\n", host);
+		s = getnameinfo(ifa->ifa_addr,
+				(family == AF_INET) ? sizeof(struct sockaddr_in) :
+															sizeof(struct sockaddr_in6),
+				host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+		if(s!=0){
+			printf("getnameinfo() failed: %s\n", gai_strerror(s));
+			exit(EXIT_FAILURE);
 		}
+		printf("\taddress: <%s>\n", host);
+	
+		s = getnameinfo(ifa->ifa_netmask,
+				(family == AF_INET) ? sizeof(struct sockaddr_in) :
+															sizeof(struct sockaddr_in6),
+				mask, NI_MAXHOST, NULL, 0 , NI_NUMERICHOST);
+		if(s!=0){
+			printf("getnameinfo() failed: %s\n", gai_strerror(s));
+			exit(EXIT_FAILURE);
+		}
+		printf("\tnetmask: <%s>\n", mask);
+
+		for(i=0; i<(family == AF_INET ? sizeof(struct sockaddr_in) :
+				sizeof(struct sockaddr_in6)); i++)
+			net.sa_data[i] = ifa->ifa_addr->sa_data[i] & ifa->ifa_netmask->sa_data[i];
+		net.sa_family = family;
+		s = getnameinfo(&net,
+				(family == AF_INET) ? sizeof(struct sockaddr_in) :
+															sizeof(struct sockaddr_in6),
+				network, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+		if(s!=0){
+			printf("getnameinfo() failed: %s\n", gai_strerror(s));
+			exit(EXIT_FAILURE);
+		}
+		printf("\tnetwork: <%s>\n", network);
+
+		for(i=0; i<(family == AF_INET ? sizeof(struct sockaddr_in) :
+				sizeof(struct sockaddr_in6)); i++)
+			broad.sa_data[i] = (ifa->ifa_addr->sa_data[i] &	ifa->ifa_netmask->sa_data[i]) |
+					~ifa->ifa_netmask->sa_data[i];
+		broad.sa_family = family;
+		s = getnameinfo(&broad,
+				(family == AF_INET) ? sizeof(struct sockaddr_in) :
+															sizeof(struct sockaddr_in6),
+				broadcast, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+		if(s!=0){
+			printf("getnameinfo() failed: %s\n", gai_strerror(s));
+			exit(EXIT_FAILURE);
+		}
+		printf("\tbroadcast: <%s>\n", broadcast);
+
 	}
 } /* end: map_local_network */
