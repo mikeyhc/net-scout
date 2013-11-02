@@ -183,6 +183,7 @@ map_local_network(void){
 		if(ifa->ifa_addr==NULL) continue;
 		family = ifa->ifa_addr->sa_family;
 		if(family != AF_INET && family != AF_INET6) continue;
+                if(!strcmp(ifa->ifa_name, "lo")) continue; /* skip loopback */
 
 		printf("\nusing:\n%s address family: %d%s\n", 
 				ifa->ifa_name, family,
