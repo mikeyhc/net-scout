@@ -99,8 +99,9 @@ increase_sockaddr(struct sockaddr *a, int family, int increase){
  */
 static void
 testping(struct sockaddr *src, struct sockaddr *dst){
-	int s, on, dstlen;
+	int s, on, fromlen, dstlen;
 	struct ip *ip;
+        struct sockaddr_in from;
 	struct icmphdr *icmp;
 	char buf[BUFFER_SIZE];
 
@@ -108,7 +109,7 @@ testping(struct sockaddr *src, struct sockaddr *dst){
 	icmp = (struct icmphdr*)(ip + 1);
 	memset(buf, 0, BUFFER_SIZE);
 
-	if((s = socket(AF_INET, SOCK_RAW, IPPROTO_RAW)) , 0){
+	if((s = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0){
 		perror("socket() error");
 		exit(1);
 	}
@@ -145,23 +146,29 @@ testping(struct sockaddr *src, struct sockaddr *dst){
 	ip->ip_src.s_addr |= (src->sa_data[2] & 0xFF);
 
 	ip->ip_dst.s_addr = 0x00000000;
-	//ip->ip_dst.s_addr |= (dst->sa_data[5] & 0xFF) << 24;
-	ip->ip_dst.s_addr |= (2 & 0xFF) << 24;
+	ip->ip_dst.s_addr |= (dst->sa_data[5] & 0xFF) << 24;
 	ip->ip_dst.s_addr |= (dst->sa_data[4] & 0xFF) << 16;
 	ip->ip_dst.s_addr |= (dst->sa_data[3] & 0xFF) << 8;
 	ip->ip_dst.s_addr |= (dst->sa_data[2] & 0xFF);
-
-	printf("dst: %s\n", inet_ntoa(ip->ip_dst));
-	dstlen = sizeof(*dst);
+    
+        printf("Testing %d.%d.%d.%d\n", (dst->sa_data[2] & 0xFF), (dst->sa_data[3] & 0xFF), 
+            (dst->sa_data[4] & 0xFF), (dst->sa_data[5] & 0xFF));
+        dstlen = sizeof(*dst);
 	if(sendto(s, buf, sizeof(buf), 0, dst, dstlen) < 0){
 		perror("error with sendto()");
 		exit(EXIT_FAILURE);
 	}
 
-	if(recvfrom(s, buf, sizeof(buf), 0, dst, &dstlen) < 0){
+        fromlen = sizeof(from);
+	if(recvfrom(s, buf, sizeof(buf), 0, (struct sockaddr*)&from, &fromlen) < 0){
 		perror("error with recvfrom()");
 		exit(EXIT_FAILURE);
 	}
+        if(!((struct icmphdr*)(buf + (((struct ip*)buf)->ip_hl<<2)))->type){
+            printf("%d.%d.%d.%d responded\n", (dst->sa_data[2] & 0xFF), (dst->sa_data[3] & 0xFF), 
+                (dst->sa_data[4] & 0xFF), (dst->sa_data[5] & 0xFF));
+        }
+                
 
 	close(s);
 }/* end: testping */
