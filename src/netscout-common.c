@@ -21,9 +21,10 @@ static struct ifaddrs *ifaddr = NULL;		/* store for single fetch */
 
 /* load_ifaddrs: this will check if we have fetched ifaddrs yet, and if not will
  * fetch them */
-static void
-load_ifaddrs(void){
-	if(ifaddr!=NULL) return;
+static void load_ifaddrs(void)
+{
+	if(ifaddr!=NULL) 
+		return;
 	if(getifaddrs(&ifaddr)==-1){
 		perror("getifaddrs");
 		exit(EXIT_FAILURE);
@@ -36,8 +37,8 @@ load_ifaddrs(void){
  * param src: the structure to copy from
  * param family: either AF_INET or AF_INET6
  */
-static void
-sockaddrcpy(struct sockaddr *dest, struct sockaddr *src, int family){
+static void sockaddrcpy(struct sockaddr *dest, struct sockaddr *src, int family)
+{
 	int i;
 
 	if(family == AF_INET)
@@ -55,16 +56,20 @@ sockaddrcpy(struct sockaddr *dest, struct sockaddr *src, int family){
  * param family: either AF_INET or AF_INET6
  * returns: -1 if a>b, 0 if a==b, 1 if a<b
  */
-static int
-compare_sockaddr(struct sockaddr *a, struct sockaddr *b, int family){
+static int compare_sockaddr(struct sockaddr *a, struct sockaddr *b, int family)
+{
 	int i;
 
 	if(family == AF_INET)
 		for(i=2; i<6; i++){
-			if((a->sa_data[i] & 0xFF) > (b->sa_data[i] & 0xFF)) return -1;
-			else if((a->sa_data[i] & 0xFF) < (b->sa_data[i] & 0xFF)) return 1;
+			if((a->sa_data[i] & 0xFF) > (b->sa_data[i] & 0xFF)) 
+				return -1;
+			else if((a->sa_data[i] & 0xFF) < 
+					(b->sa_data[i] & 0xFF))
+				return 1;
 		}
-	else if(family == AF_INET6){ }
+	else if(family == AF_INET6){ 
+	}
 
 	return 0;
 }/* end: compare_sockaddr */
@@ -75,8 +80,8 @@ compare_sockaddr(struct sockaddr *a, struct sockaddr *b, int family){
  * param family: AF_INET or AF_INET6
  * param increase: the amount to increase by
  */
-static void
-increase_sockaddr(struct sockaddr *a, int family, int increase){
+static void increase_sockaddr(struct sockaddr *a, int family, int increase)
+{
 		int i, temp;
 
 		if(family == AF_INET){
@@ -97,8 +102,8 @@ increase_sockaddr(struct sockaddr *a, int family, int increase){
  * param src: the address to send from
  * param dst: the address to send to
  */
-static void
-testping(struct sockaddr *src, struct sockaddr *dst){
+static void testping(struct sockaddr *src, struct sockaddr *dst)
+{
 	int s, on, fromlen, dstlen;
 	struct ip *ip;
         struct sockaddr_in from;
@@ -151,8 +156,9 @@ testping(struct sockaddr *src, struct sockaddr *dst){
 	ip->ip_dst.s_addr |= (dst->sa_data[3] & 0xFF) << 8;
 	ip->ip_dst.s_addr |= (dst->sa_data[2] & 0xFF);
     
-        printf("Testing %d.%d.%d.%d\n", (dst->sa_data[2] & 0xFF), (dst->sa_data[3] & 0xFF), 
-            (dst->sa_data[4] & 0xFF), (dst->sa_data[5] & 0xFF));
+        printf("Testing %d.%d.%d.%d\n", (dst->sa_data[2] & 0xFF), 
+		(dst->sa_data[3] & 0xFF), (dst->sa_data[4] & 0xFF), 
+		(dst->sa_data[5] & 0xFF));
         dstlen = sizeof(*dst);
 	if(sendto(s, buf, sizeof(buf), 0, dst, dstlen) < 0){
 		perror("error with sendto()");
@@ -160,13 +166,15 @@ testping(struct sockaddr *src, struct sockaddr *dst){
 	}
 
         fromlen = sizeof(from);
-	if(recvfrom(s, buf, sizeof(buf), 0, (struct sockaddr*)&from, &fromlen) < 0){
+	if(recvfrom(s, buf, sizeof(buf), 0, 
+			(struct sockaddr*)&from, &fromlen) < 0){
 		perror("error with recvfrom()");
 		exit(EXIT_FAILURE);
 	}
         if(!((struct icmphdr*)(buf + (((struct ip*)buf)->ip_hl<<2)))->type){
-            printf("%d.%d.%d.%d responded\n", (dst->sa_data[2] & 0xFF), (dst->sa_data[3] & 0xFF), 
-                (dst->sa_data[4] & 0xFF), (dst->sa_data[5] & 0xFF));
+		printf("%d.%d.%d.%d responded\n", (dst->sa_data[2] & 0xFF), 
+			(dst->sa_data[3] & 0xFF), (dst->sa_data[4] & 0xFF), 
+			(dst->sa_data[5] & 0xFF));
         }
                 
 
@@ -178,7 +186,8 @@ testping(struct sockaddr *src, struct sockaddr *dst){
  * every possible host in each network and print the results.
  */
 void
-map_local_network(void){
+map_local_network(void)
+{
 	struct ifaddrs *ifa;
 	int family, s, i, j;
 	char host[NI_MAXHOST], mask[NI_MAXHOST], network[NI_MAXHOST], 
@@ -193,23 +202,23 @@ map_local_network(void){
                 if(!strcmp(ifa->ifa_name, "lo")) continue; /* skip loopback */
 
 		printf("\nusing:\n%s address family: %d%s\n", 
-				ifa->ifa_name, family,
-				(family == AF_INET)		? " (AF_INET)" :
-				(family == AF_INET6)	? " (AF_INET6)" : " (UNKNOWN)");
-		s = getnameinfo(ifa->ifa_addr,
-				(family == AF_INET) ? sizeof(struct sockaddr_in) :
-															sizeof(struct sockaddr_in6),
-				host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+			ifa->ifa_name, family, (family == AF_INET) ? 
+			" (AF_INET)" : (family == AF_INET6) ? " (AF_INET6)" : 
+			" (UNKNOWN)");
+		s = getnameinfo(ifa->ifa_addr, (family == AF_INET) ? 
+			sizeof(struct sockaddr_in) : 
+			sizeof(struct sockaddr_in6),
+			host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
 		if(s!=0){
 			printf("getnameinfo() failed: %s\n", gai_strerror(s));
 			exit(EXIT_FAILURE);
 		}
 		printf("\taddress:   <%s>\n", host);
 	
-		s = getnameinfo(ifa->ifa_netmask,
-				(family == AF_INET) ? sizeof(struct sockaddr_in) :
-															sizeof(struct sockaddr_in6),
-				mask, NI_MAXHOST, NULL, 0 , NI_NUMERICHOST);
+		s = getnameinfo(ifa->ifa_netmask, (family == AF_INET) ? 
+			sizeof(struct sockaddr_in) : 
+			sizeof(struct sockaddr_in6),
+			mask, NI_MAXHOST, NULL, 0 , NI_NUMERICHOST);
 		if(s!=0){
 			printf("getnameinfo() failed: %s\n", gai_strerror(s));
 			exit(EXIT_FAILURE);
@@ -218,12 +227,13 @@ map_local_network(void){
 
 		for(i=0; i<(family == AF_INET ? sizeof(struct sockaddr_in) :
 				sizeof(struct sockaddr_in6)); i++)
-			net.sa_data[i] = ifa->ifa_addr->sa_data[i] & ifa->ifa_netmask->sa_data[i];
+			net.sa_data[i] = ifa->ifa_addr->sa_data[i] & 
+					ifa->ifa_netmask->sa_data[i];
 		net.sa_family = family;
-		s = getnameinfo(&net,
-				(family == AF_INET) ? sizeof(struct sockaddr_in) :
-															sizeof(struct sockaddr_in6),
-				network, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+		s = getnameinfo(&net, (family == AF_INET) ? 
+				sizeof(struct sockaddr_in) : 
+				sizeof(struct sockaddr_in6), network, 
+				NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
 		if(s!=0){
 			printf("getnameinfo() failed: %s\n", gai_strerror(s));
 			exit(EXIT_FAILURE);
@@ -232,13 +242,14 @@ map_local_network(void){
 
 		for(i=0; i<(family == AF_INET ? sizeof(struct sockaddr_in) :
 				sizeof(struct sockaddr_in6)); i++)
-			broad.sa_data[i] = (ifa->ifa_addr->sa_data[i] &	ifa->ifa_netmask->sa_data[i]) |
+			broad.sa_data[i] = (ifa->ifa_addr->sa_data[i] &	
+					ifa->ifa_netmask->sa_data[i]) |
 					~ifa->ifa_netmask->sa_data[i];
 		broad.sa_family = family;
-		s = getnameinfo(&broad,
-				(family == AF_INET) ? sizeof(struct sockaddr_in) :
-															sizeof(struct sockaddr_in6),
-				broadcast, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+		s = getnameinfo(&broad, (family == AF_INET) ? 
+				sizeof(struct sockaddr_in) : 
+				sizeof(struct sockaddr_in6), broadcast, 
+				NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
 		if(s!=0){
 			printf("getnameinfo() failed: %s\n", gai_strerror(s));
 			exit(EXIT_FAILURE);
