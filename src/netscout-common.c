@@ -5,22 +5,24 @@
  */
 
 #include <arpa/inet.h>
-#include <sys/socket.h>
+#include <ifaddrs.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
 #include <netdb.h>
-#include <ifaddrs.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #define BUFFER_SIZE 400
 
-static struct ifaddrs *ifaddr = NULL;		/* store for single fetch */
+static struct ifaddrs *ifaddr = NULL;	/* store for single fetch */
 
-/* load_ifaddrs: this will check if we have fetched ifaddrs yet, and if not will
- * fetch them */
+/* load_ifaddrs: this will check if we have fetched ifaddrs yet, and if 
+ * not will fetch them */
 static void load_ifaddrs(void)
 {
 	if(ifaddr!=NULL) 
@@ -37,7 +39,8 @@ static void load_ifaddrs(void)
  * param src: the structure to copy from
  * param family: either AF_INET or AF_INET6
  */
-static void sockaddrcpy(struct sockaddr *dest, struct sockaddr *src, int family)
+static void sockaddrcpy(struct sockaddr *dest, struct sockaddr *src, 
+		int family)
 {
 	int i;
 
@@ -56,13 +59,14 @@ static void sockaddrcpy(struct sockaddr *dest, struct sockaddr *src, int family)
  * param family: either AF_INET or AF_INET6
  * returns: -1 if a>b, 0 if a==b, 1 if a<b
  */
-static int compare_sockaddr(struct sockaddr *a, struct sockaddr *b, int family)
+static int compare_sockaddr(struct sockaddr *a, struct sockaddr *b, 
+		int family)
 {
 	int i;
 
 	if(family == AF_INET)
 		for(i=2; i<6; i++){
-			if((a->sa_data[i] & 0xFF) > (b->sa_data[i] & 0xFF)) 
+			if((a->sa_data[i] & 0xFF) > (b->sa_data[i] & 0xFF))
 				return -1;
 			else if((a->sa_data[i] & 0xFF) < 
 					(b->sa_data[i] & 0xFF))
@@ -96,39 +100,38 @@ static void increase_sockaddr(struct sockaddr *a, int family, int increase)
 		}
 }/* end: increase_sockaddr */
 
-/* testping: sends a ping from a given source address to a given host address
- * and will prrint a message if there is a reply
+/* testping: sends a ping from a given source address to a given host 
+ * address and will prrint a message if there is a reply
  *
  * param src: the address to send from
  * param dst: the address to send to
+ * return: -1 error
+ *          0 timeout
+ *          1 responded
  */
-static void testping(struct sockaddr *src, struct sockaddr *dst)
+static int testping(struct sockaddr *src, struct sockaddr *dst)
 {
-	int s, on, fromlen, dstlen;
+	int s, on, fromlen, dstlen, retval, r;
 	struct ip *ip;
         struct sockaddr_in from;
 	struct icmphdr *icmp;
+	struct timeval tv;
+	fd_set rfds;
 	char buf[BUFFER_SIZE];
 
 	ip = (struct ip*)buf;
 	icmp = (struct icmphdr*)(ip + 1);
 	memset(buf, 0, BUFFER_SIZE);
 
-	if((s = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0){
-		perror("socket() error");
-		exit(1);
-	}
+	if((s = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0)
+		return -1;
 
 	on = 1;
-	if(setsockopt(s, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)) < 0){
-		perror("setsockopt() for BROADCAST error");
-		exit(EXIT_FAILURE);
-	}
+	if(setsockopt(s, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)) < 0)
+		return -1;
 
-	if(setsockopt(s, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0){
-		perror("setsockopt() for IP_HDRINCL error");
-		exit(EXIT_FAILURE);
-	}
+	if(setsockopt(s, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on)) < 0)
+		return -1;
 
 	ip->ip_v = 4;
 	ip->ip_hl = sizeof*ip >> 2;
@@ -156,40 +159,43 @@ static void testping(struct sockaddr *src, struct sockaddr *dst)
 	ip->ip_dst.s_addr |= (dst->sa_data[3] & 0xFF) << 8;
 	ip->ip_dst.s_addr |= (dst->sa_data[2] & 0xFF);
     
-        printf("Testing %d.%d.%d.%d\n", (dst->sa_data[2] & 0xFF), 
-		(dst->sa_data[3] & 0xFF), (dst->sa_data[4] & 0xFF), 
-		(dst->sa_data[5] & 0xFF));
+	FD_ZERO(&rfds);
+	FD_SET(s, &rfds);
+	tv.tv_sec = 5;
+	tv.tv_usec = 0;
+
         dstlen = sizeof(*dst);
-	if(sendto(s, buf, sizeof(buf), 0, dst, dstlen) < 0){
-		perror("error with sendto()");
-		exit(EXIT_FAILURE);
-	}
+	if(sendto(s, buf, sizeof(buf), 0, dst, dstlen) < 0)
+		return -1;
 
+	
         fromlen = sizeof(from);
-	if(recvfrom(s, buf, sizeof(buf), 0, 
-			(struct sockaddr*)&from, &fromlen) < 0){
-		perror("error with recvfrom()");
-		exit(EXIT_FAILURE);
-	}
-        if(!((struct icmphdr*)(buf + (((struct ip*)buf)->ip_hl<<2)))->type){
-		printf("%d.%d.%d.%d responded\n", (dst->sa_data[2] & 0xFF), 
-			(dst->sa_data[3] & 0xFF), (dst->sa_data[4] & 0xFF), 
-			(dst->sa_data[5] & 0xFF));
-        }
-                
-
+	if((retval = select(s+1, &rfds, NULL, NULL, &tv)) == -1)
+		r = -1;
+	else if(retval){
+		if(recvfrom(s, buf, sizeof(buf), 0, 
+				(struct sockaddr*)&from, &fromlen) < 0){
+			r = -1;
+		}
+		if(!((struct icmphdr*)(buf +
+				(((struct ip*)buf)->ip_hl<<2)))->type)
+			r = 1;
+	}else
+		r = 0;
 	close(s);
+	return r;
 }/* end: testping */
 
-/* map_local_network: will get all the interfaces on this machine, then get the
- * network and netmask for each interface, using that it will attempt to ping 
- * every possible host in each network and print the results.
+/* map_local_network: will get all the interfaces on this machine, then 
+ * get the network and netmask for each interface, using that it will 
+ * attempt to ping every possible host in each network and print the 
+ * results.
  */
 void
 map_local_network(void)
 {
 	struct ifaddrs *ifa;
-	int family, s, i, j;
+	int family, s, i, j, t;
 	char host[NI_MAXHOST], mask[NI_MAXHOST], network[NI_MAXHOST], 
 			 broadcast[NI_MAXHOST], host_temp[NI_MAXHOST];
 	struct sockaddr net, broad, sa_temp;
@@ -199,18 +205,20 @@ map_local_network(void)
 		if(ifa->ifa_addr==NULL) continue;
 		family = ifa->ifa_addr->sa_family;
 		if(family != AF_INET && family != AF_INET6) continue;
-                if(!strcmp(ifa->ifa_name, "lo")) continue; /* skip loopback */
+		/* skip loopback */
+                if(!strcmp(ifa->ifa_name, "lo")) continue; 
 
 		printf("\nusing:\n%s address family: %d%s\n", 
 			ifa->ifa_name, family, (family == AF_INET) ? 
-			" (AF_INET)" : (family == AF_INET6) ? " (AF_INET6)" : 
-			" (UNKNOWN)");
+			" (AF_INET)" : (family == AF_INET6) ? 
+			" (AF_INET6)" : " (UNKNOWN)");
 		s = getnameinfo(ifa->ifa_addr, (family == AF_INET) ? 
 			sizeof(struct sockaddr_in) : 
 			sizeof(struct sockaddr_in6),
 			host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
 		if(s!=0){
-			printf("getnameinfo() failed: %s\n", gai_strerror(s));
+			printf("getnameinfo() failed: %s\n", 
+					gai_strerror(s));
 			exit(EXIT_FAILURE);
 		}
 		printf("\taddress:   <%s>\n", host);
@@ -220,12 +228,14 @@ map_local_network(void)
 			sizeof(struct sockaddr_in6),
 			mask, NI_MAXHOST, NULL, 0 , NI_NUMERICHOST);
 		if(s!=0){
-			printf("getnameinfo() failed: %s\n", gai_strerror(s));
+			printf("getnameinfo() failed: %s\n", 
+					gai_strerror(s));
 			exit(EXIT_FAILURE);
 		}
 		printf("\tnetmask:   <%s>\n", mask);
 
-		for(i=0; i<(family == AF_INET ? sizeof(struct sockaddr_in) :
+		for(i=0; i<(family == AF_INET ? 
+				sizeof(struct sockaddr_in) :
 				sizeof(struct sockaddr_in6)); i++)
 			net.sa_data[i] = ifa->ifa_addr->sa_data[i] & 
 					ifa->ifa_netmask->sa_data[i];
@@ -235,12 +245,14 @@ map_local_network(void)
 				sizeof(struct sockaddr_in6), network, 
 				NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
 		if(s!=0){
-			printf("getnameinfo() failed: %s\n", gai_strerror(s));
+			printf("getnameinfo() failed: %s\n", 
+					gai_strerror(s));
 			exit(EXIT_FAILURE);
 		}
 		printf("\tnetwork:   <%s>\n", network);
 
-		for(i=0; i<(family == AF_INET ? sizeof(struct sockaddr_in) :
+		for(i=0; i<(family == AF_INET ? 
+				sizeof(struct sockaddr_in) :
 				sizeof(struct sockaddr_in6)); i++)
 			broad.sa_data[i] = (ifa->ifa_addr->sa_data[i] &	
 					ifa->ifa_netmask->sa_data[i]) |
@@ -251,7 +263,8 @@ map_local_network(void)
 				sizeof(struct sockaddr_in6), broadcast, 
 				NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
 		if(s!=0){
-			printf("getnameinfo() failed: %s\n", gai_strerror(s));
+			printf("getnameinfo() failed: %s\n", 
+					gai_strerror(s));
 			exit(EXIT_FAILURE);
 		}
 		printf("\tbroadcast: <%s>\n", broadcast);
@@ -259,7 +272,16 @@ map_local_network(void)
 		sockaddrcpy(&sa_temp, &net, family);
 		increase_sockaddr(&sa_temp, family, 1);
 		while(compare_sockaddr(&broad, &sa_temp, family)<0){
-			testping(ifa->ifa_addr, &sa_temp);
+			if((t = testping(ifa->ifa_addr, &sa_temp)) > 0)
+				printf("response from: %d.%d.%d.%d\n",
+						sa_temp.sa_data[2] & 0xFF,
+						sa_temp.sa_data[3] & 0xFF,
+						sa_temp.sa_data[4] & 0xFF,
+						sa_temp.sa_data[5] & 0xFF);
+			else if(t < 0){
+				perror("error with ping");
+				break;
+			}
 			increase_sockaddr(&sa_temp, family, 1);
 		}
 	}
